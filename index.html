@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>7CE · Quote Builder</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,300..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0b201b; --panel:#122c25; --panel2:#0d241e; --panel3:#17352d;
+    --line:rgba(233,240,230,.13); --line-strong:rgba(233,240,230,.24);
+    --text:#e9f0e6; --muted:#9db3a6; --dim:#6e8579;
+    --amber:#ffb52e; --amber-deep:#e29a00; --red:#e5484d;
+    --paper:#fbf9f1; --ink:#20261f; --ink-soft:#5c6657; --ink-faint:#98a08d;
+    --green:#123f33; --rule:#e7e2d3;
+    --disp:'Bricolage Grotesque',sans-serif; --body:'IBM Plex Sans',sans-serif; --mono:'IBM Plex Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    font-family:var(--body); color:var(--text); min-height:100vh;
+    background:
+      radial-gradient(900px 520px at 88% -12%, rgba(255,181,46,.10), transparent 60%),
+      radial-gradient(760px 560px at -12% 112%, rgba(46,168,120,.13), transparent 60%),
+      var(--bg);
+  }
+  body::before{ /* dot grid */
+    content:''; position:fixed; inset:0; pointer-events:none; z-index:0;
+    background-image:radial-gradient(circle, rgba(233,240,230,.06) 1px, transparent 1.5px);
+    background-size:24px 24px;
+  }
+  body::after{ /* slow drifting glow */
+    content:''; position:fixed; width:520px; height:520px; border-radius:50%;
+    background:radial-gradient(circle, rgba(255,181,46,.08), transparent 65%);
+    top:-140px; left:38%; pointer-events:none; z-index:0;
+    animation:drift 26s ease-in-out infinite alternate;
+  }
+  @keyframes drift{from{transform:translateX(-120px)}to{transform:translateX(160px)}}
+  @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.7)}}
+  @keyframes stampIn{from{opacity:0;transform:rotate(-16deg) scale(2)}to{opacity:1;transform:rotate(-8deg) scale(1)}}
+  @keyframes rowIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+
+  /* ── Top bar ─────────────────────────── */
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    display:flex; align-items:center; justify-content:space-between; gap:14px;
+    padding:12px 22px; background:rgba(11,32,27,.92); border-bottom:1px solid var(--line);
+    animation:rise .5s both;
+  }
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{
+    width:36px;height:36px;display:grid;place-items:center;flex:none;
+    background:var(--amber); color:var(--ink); font:800 19px var(--disp);
+    border-radius:7px; transform:rotate(-4deg); box-shadow:2px 3px 0 rgba(0,0,0,.35);
+    transition:transform .25s cubic-bezier(.3,1.6,.5,1);
+  }
+  .brand:hover .logo{transform:rotate(3deg) scale(1.06)}
+  .brand h1{font:700 17px/1.1 var(--disp); letter-spacing:.01em}
+  .brand small{display:block; font:500 10px var(--mono); letter-spacing:.22em; text-transform:uppercase; color:var(--dim); margin-top:2px}
+  .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .save-chip{
+    font:500 10.5px var(--mono); letter-spacing:.1em; color:var(--muted);
+    border:1px solid var(--line); padding:6px 11px; border-radius:99px;
+    opacity:.55; transition:.3s;
+  }
+  .save-chip.flash{opacity:1; color:var(--amber); border-color:rgba(255,181,46,.5)}
+  .btn{
+    display:inline-flex; align-items:center; gap:8px; cursor:pointer;
+    font:600 13px var(--body); border-radius:8px; padding:10px 16px;
+    border:1px solid transparent; transition:transform .15s, box-shadow .15s, border-color .15s, background .15s;
+  }
+  .btn:active{transform:translateY(1px) scale(.98)}
+  .btn svg{width:15px;height:15px}
+  .btn-ghost{background:transparent; color:var(--muted); border-color:var(--line-strong)}
+  .btn-ghost:hover{color:var(--text); border-color:var(--amber); transform:translateY(-1px)}
+  .btn-primary{
+    background:var(--amber); color:var(--ink); font-weight:700;
+    box-shadow:0 2px 0 var(--amber-deep), 0 8px 22px rgba(255,181,46,.22);
+  }
+  .btn-primary:hover{transform:translateY(-2px); box-shadow:0 4px 0 var(--amber-deep), 0 14px 30px rgba(255,181,46,.32)}
+  .btn-primary kbd{font:600 9.5px var(--mono); background:rgba(0,0,0,.16); padding:2px 5px; border-radius:4px}
+
+  /* ── Layout ─────────────────────────── */
+  .layout{
+    position:relative; z-index:1;
+    display:grid; grid-template-columns:minmax(0,1fr) minmax(430px,500px);
+    gap:24px; max-width:1280px; margin:0 auto; padding:24px 22px 80px;
+    align-items:start;
+  }
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:11px;
+    padding:20px; margin-bottom:18px; animation:rise .55s both; animation-delay:var(--d,0s);
+    transition:border-color .2s;
+  }
+  .card:focus-within{border-color:rgba(255,181,46,.4)}
+  .card > header{display:flex; align-items:baseline; gap:10px; margin-bottom:16px; flex-wrap:wrap}
+  .idx{font:600 11px var(--mono); color:var(--amber); letter-spacing:.1em}
+  .card h2{font:600 17px var(--disp); letter-spacing:.01em}
+  .hint{font:400 11px var(--mono); color:var(--dim); margin-left:auto}
+  .cols{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+  .cols .card{margin-bottom:0}
+  .spacer{height:18px}
+
+  label{display:flex; flex-direction:column; gap:6px; font:600 10.5px var(--mono); letter-spacing:.13em; text-transform:uppercase; color:var(--muted)}
+  input,textarea,select{
+    font:500 13.5px var(--body); color:var(--text);
+    background:var(--panel2); border:1px solid var(--line); border-radius:8px;
+    padding:9px 11px; width:100%; outline:none;
+    transition:border-color .15s, box-shadow .15s;
+  }
+  input::placeholder,textarea::placeholder{color:var(--dim)}
+  input:focus,textarea:focus,select:focus{border-color:var(--amber); box-shadow:0 0 0 3px rgba(255,181,46,.16)}
+  textarea{resize:vertical; min-height:56px}
+  select{appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 16px) 55%, calc(100% - 11px) 55%; background-size:5px 5px; background-repeat:no-repeat; cursor:pointer}
+  input[type=number]::-webkit-inner-spin-button{opacity:.4}
+
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:12px}
+  .grid4{display:grid; grid-template-columns:repeat(4,1fr); gap:12px}
+  .wide{grid-column:1/-1}
+  .pct{position:relative}
+  .pct input{padding-right:30px}
+  .pct::after{content:'%'; position:absolute; right:11px; bottom:9px; font:500 11px var(--mono); color:var(--dim); pointer-events:none}
+
+  /* ── Line items ─────────────────────── */
+  .items-head{display:grid; grid-template-columns:1fr 62px 66px 108px 108px 32px; gap:8px; padding:0 2px 8px; font:600 9.5px var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--dim)}
+  .items-head span:nth-child(2),.items-head span:nth-child(3),.items-head span:nth-child(4),.items-head span:nth-child(5){text-align:right}
+  .item-row{
+    display:grid; grid-template-columns:1fr 62px 66px 108px 108px 32px; gap:8px;
+    align-items:center; margin-bottom:8px; animation:rowIn .3s both;
+    transition:opacity .2s, transform .2s;
+  }
+  .item-row.removing{opacity:0; transform:translateX(14px)}
+  .item-row input{padding:8px 9px; font-size:13px}
+  .item-row .i-qty,.item-row .i-price{text-align:right; font-family:var(--mono)}
+  .i-amount{font:600 12.5px var(--mono); text-align:right; color:var(--amber); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .i-del{
+    width:30px;height:30px; display:grid;place-items:center; cursor:pointer;
+    background:transparent; border:1px solid var(--line); border-radius:7px;
+    color:var(--dim); font-size:12px; transition:.15s;
+  }
+  .i-del:hover{border-color:var(--red); color:var(--red); transform:rotate(90deg)}
+  .add-item{
+    width:100%; margin-top:6px; padding:11px; cursor:pointer;
+    background:transparent; border:1.5px dashed var(--line-strong); border-radius:9px;
+    color:var(--muted); font:600 12.5px var(--body); letter-spacing:.02em;
+    transition:.2s;
+  }
+  .add-item:hover{border-color:var(--amber); color:var(--amber); background:rgba(255,181,46,.05)}
+
+  .totals{max-width:320px; margin:18px 0 0 auto; border-top:1px solid var(--line-strong); padding-top:12px}
+  .trow{display:flex; justify-content:space-between; align-items:baseline; padding:4px 2px; font-size:12.5px; color:var(--muted)}
+  .trow b{font:600 12.5px var(--mono); color:var(--text)}
+  .trow i{font-style:normal; color:var(--dim); font-size:11px}
+  .trow.grand{
+    margin-top:8px; padding:10px 12px; background:var(--amber); border-radius:6px;
+    box-shadow:0 6px 18px rgba(255,181,46,.2);
+  }
+  .trow.grand span{font:600 10px var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--ink)}
+  .trow.grand b{font:800 19px var(--disp); color:var(--ink)}
+
+  /* ── Preview ────────────────────────── */
+  .preview{position:sticky; top:82px; animation:rise .6s .15s both}
+  .pv-bar{display:flex; align-items:center; gap:9px; font:600 10px var(--mono); letter-spacing:.24em; text-transform:uppercase; color:var(--muted); padding:0 4px 10px}
+  .pv-bar .dot{width:7px;height:7px;border-radius:50%;background:var(--amber);animation:pulse 2s infinite}
+  .pv-note{margin-left:auto; letter-spacing:.08em; color:var(--dim); text-transform:none}
+  .pv-scroll{max-height:calc(100vh - 150px); overflow:auto; padding:4px 4px 30px; scrollbar-width:thin; scrollbar-color:var(--panel3) transparent}
+  .pv-scroll::-webkit-scrollbar{width:8px}
+  .pv-scroll::-webkit-scrollbar-thumb{background:var(--panel3); border-radius:8px}
+
+  .paper{
+    background:var(--paper); color:var(--ink); border-radius:4px; overflow:hidden;
+    position:relative; font-size:12px; line-height:1.5;
+    box-shadow:0 1px 0 rgba(0,0,0,.35), 0 24px 50px rgba(0,0,0,.5);
+    transition:transform .3s, box-shadow .3s;
+  }
+  .paper:hover{transform:translateY(-3px); box-shadow:0 1px 0 rgba(0,0,0,.35), 0 32px 60px rgba(0,0,0,.55)}
+  .p-band{background:var(--green); color:#fff; padding:18px 20px 13px; display:flex; justify-content:space-between; gap:14px; border-bottom:4px solid var(--amber)}
+  .p-title{font:800 27px/1 var(--disp); letter-spacing:.04em}
+  .p-num{font:500 10px var(--mono); opacity:.85; margin-top:5px; letter-spacing:.08em}
+  .p-co{text-align:right; min-width:0}
+  .p-co b{font:700 13px var(--disp); display:block; margin-bottom:3px}
+  .p-co span{display:block; font-size:9.5px; color:#cfe2d4; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .p-meta{padding:9px 20px; border-bottom:1px solid var(--rule); font:500 10px var(--mono); color:#77816f; letter-spacing:.04em}
+  .p-parties{display:grid; grid-template-columns:1fr 1fr; gap:16px; padding:14px 20px 12px}
+  .p-parties .lbl{font:600 8.5px var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:4px}
+  .p-parties b{font-size:12.5px; display:block; margin-bottom:2px}
+  .p-parties span{display:block; font-size:10.5px; color:var(--ink-soft)}
+  .p-tablewrap{padding:0 20px}
+  .p-table{width:100%; border-collapse:collapse}
+  .p-table th{background:var(--green); color:#fff; font:600 8.5px var(--mono); letter-spacing:.12em; text-transform:uppercase; padding:6px 8px; text-align:right}
+  .p-table th:nth-child(1),.p-table th:nth-child(2){text-align:left}
+  .p-table td{padding:7px 8px; border-bottom:1px solid var(--rule); font-size:11.5px; vertical-align:top}
+  .p-table tr:nth-child(even) td{background:#f5f3ea}
+  .p-table td.n{color:var(--ink-faint); font:500 10px var(--mono); width:22px}
+  .p-table td.q,.p-table td.p,.p-table td.a{text-align:right; font-family:var(--mono); font-size:11px; white-space:nowrap}
+  .p-table td.a{font-weight:600}
+  .p-table td .u{color:var(--ink-faint); font-size:9.5px; margin-left:3px}
+  .p-table tr.ghost td{color:#adb3a0; font-style:italic}
+  .p-table td.empty{text-align:center; padding:20px 8px}
+  .p-totals{display:flex; justify-content:flex-end; padding:12px 20px 4px}
+  .p-totals .tt{width:250px}
+  .p-totals .trow{color:var(--ink-soft); font-size:11px}
+  .p-totals .trow b{color:var(--ink); font-size:11px}
+  .p-totals .grand{background:var(--amber); border-radius:3px; margin-top:7px; padding:8px 12px; box-shadow:none}
+  .p-totals .grand span{color:var(--ink); font:600 9px var(--mono); letter-spacing:.2em}
+  .p-totals .grand b{font:800 17px var(--disp); color:var(--ink)}
+  .p-notes{padding:10px 20px 6px}
+  .p-notes .lbl{font:600 8.5px var(--mono); letter-spacing:.18em; text-transform:uppercase; color:var(--ink-faint); margin-bottom:3px}
+  .p-notes p{font-size:10.5px; color:var(--ink-soft); margin-bottom:10px; white-space:pre-wrap}
+  .p-foot{border-top:1px solid var(--rule); margin-top:8px; padding:10px 20px 16px; display:flex; justify-content:space-between; gap:10px; font-size:9.5px; color:#8b937f}
+  .stamp{
+    position:absolute; top:92px; right:22px; z-index:2;
+    border:3px solid rgba(229,72,77,.75); color:rgba(229,72,77,.85);
+    font:800 15px var(--disp); letter-spacing:.22em; padding:4px 11px 3px;
+    border-radius:3px; transform:rotate(-8deg);
+    animation:stampIn .5s cubic-bezier(.2,1.7,.4,1) .6s both;
+  }
+
+  /* ── Toast ──────────────────────────── */
+  .toast{
+    position:fixed; left:50%; bottom:26px; transform:translate(-50%,20px); z-index:99;
+    background:var(--panel3); border:1px solid rgba(255,181,46,.5); color:var(--text);
+    font:600 12.5px var(--body); padding:11px 20px; border-radius:9px;
+    box-shadow:0 12px 32px rgba(0,0,0,.5); opacity:0; pointer-events:none;
+    transition:.3s cubic-bezier(.3,1.4,.5,1);
+  }
+  .toast.show{opacity:1; transform:translate(-50%,0)}
+
+  @media (max-width:1020px){
+    .layout{grid-template-columns:1fr}
+    .preview{position:static}
+    .pv-scroll{max-height:none}
+    .cols{grid-template-columns:1fr}
+    .grid4{grid-template-columns:1fr 1fr}
+  }
+  @media (max-width:640px){
+    .items-head{display:none}
+    .item-row{grid-template-columns:1fr 62px 62px 32px; grid-template-areas:"desc desc desc del" "qty unit price amt"}
+    .i-desc{grid-area:desc}.i-qty{grid-area:qty}.i-unit{grid-area:unit}.i-price{grid-area:price}.i-del{grid-area:del}.i-amount{grid-area:amt; align-self:center}
+    .grid2{grid-template-columns:1fr}
+    .btn-primary kbd{display:none}
+  }
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation:none!important; transition:none!important}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">7</div>
+    <div><h1>Quote Builder</h1><small>7CE · PDF Quotes</small></div>
+  </div>
+  <div class="actions">
+    <span class="save-chip" id="saveChip">● auto-saved</span>
+    <button class="btn btn-ghost" id="resetBtn">↺ Reset</button>
+    <button class="btn btn-primary" id="pdfBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4.5-4.5M12 15l4.5-4.5M4 21h16"/></svg>
+      Download PDF <kbd>Ctrl ↵</kbd>
+    </button>
+  </div>
+</header>
+
+<main class="layout">
+  <!-- ══ FORM ══ -->
+  <form id="qform" autocomplete="off" onsubmit="return false">
+
+    <div class="cols">
+      <section class="card" style="--d:.04s">
+        <header><span class="idx">01</span><h2>Your details</h2><span class="hint">appears as “From”</span></header>
+        <div class="grid2">
+          <label>Company / name<input data-k="from.name" placeholder="7CE Studio"></label>
+          <label>Email<input data-k="from.email" type="email" placeholder="you@company.com"></label>
+          <label>Phone<input data-k="from.phone" placeholder="+27 82 000 0000"></label>
+          <label class="wide">Address<textarea data-k="from.address" rows="2" placeholder="Street, city, postcode"></textarea></label>
+        </div>
+      </section>
+
+      <section class="card" style="--d:.09s">
+        <header><span class="idx">02</span><h2>Client</h2><span class="hint">appears as “Bill to”</span></header>
+        <div class="grid2">
+          <label>Contact name<input data-k="client.name" placeholder="Jane Dlamini"></label>
+          <label>Company<input data-k="client.company" placeholder="Acme (Pty) Ltd"></label>
+          <label>Email<input data-k="client.email" type="email" placeholder="client@company.com"></label>
+          <label>Phone<input data-k="client.phone" placeholder="+27 83 000 0000"></label>
+        </div>
+      </section>
+    </div>
+
+    <div class="spacer"></div>
+
+    <section class="card" style="--d:.14s">
+      <header><span class="idx">03</span><h2>Quote details</h2></header>
+      <div class="grid4">
+        <label>Quote №<input data-k="meta.number" placeholder="Q-2026-0001"></label>
+        <label>Issue date<input data-k="meta.issue" type="date"></label>
+        <label>Valid until<input data-k="meta.valid" type="date"></label>
+        <label>Currency
+          <select data-k="meta.currency">
+            <option value="ZAR">ZAR — R</option><option value="USD">USD — $</option>
+            <option value="EUR">EUR — €</option><option value="GBP">GBP — £</option>
+            <option value="NGN">NGN — ₦</option><option value="KES">KES — KSh</option>
+            <option value="GHS">GHS — ₵</option><option value="AED">AED — د.إ</option>
+            <option value="INR">INR — ₹</option><option value="AUD">AUD — A$</option>
+            <option value="CAD">CAD — C$</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <section class="card" style="--d:.19s">
+      <header><span class="idx">04</span><h2>Line items</h2><span class="hint">type anything — products, services, hours…</span></header>
+      <div class="items-head"><span>Description</span><span>Qty</span><span>Unit</span><span>Unit price</span><span>Amount</span><span></span></div>
+      <div id="itemsBox"></div>
+      <button type="button" class="add-item" id="addItem">＋ Add line item</button>
+      <div class="totals">
+        <div class="trow"><span>Subtotal</span><b id="tSub">–</b></div>
+        <div class="trow"><span>Discount <i id="tDLabel"></i></span><b id="tDisc">–</b></div>
+        <div class="trow"><span>Tax <i id="tTLabel"></i></span><b id="tTax">–</b></div>
+        <div class="trow grand"><span>Total</span><b id="tGrand">–</b></div>
+      </div>
+    </section>
+
+    <section class="card" style="--d:.24s">
+      <header><span class="idx">05</span><h2>Adjustments &amp; notes</h2></header>
+      <div class="grid2">
+        <label class="pct">Discount<input data-k="meta.discount" type="number" min="0" max="100" step="any" placeholder="0"></label>
+        <label class="pct">Tax / VAT<input data-k="meta.tax" type="number" min="0" step="any" placeholder="0"></label>
+        <label class="wide">Notes<textarea data-k="meta.notes" rows="2" placeholder="Thank you message, delivery info…"></textarea></label>
+        <label class="wide">Terms<textarea data-k="meta.terms" rows="2" placeholder="Payment terms, validity, bank details…"></textarea></label>
+      </div>
+    </section>
+  </form>
+
+  <!-- ══ LIVE PREVIEW ══ -->
+  <aside class="preview">
+    <div class="pv-bar"><span class="dot"></span> Live preview <span class="pv-note">A4 · matches the PDF</span></div>
+    <div class="pv-scroll"><div class="paper" id="paper"></div></div>
+  </aside>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ═══════════ state ═══════════ */
+const STORE_KEY = 'qf7ce_v1';
+const uid = () => 'i' + Math.random().toString(36).slice(2, 9);
+const iso = d => d.toISOString().slice(0, 10);
+const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function defaultState(){
+  const today = new Date(), plus14 = new Date(Date.now() + 14 * 864e5);
+  return {
+    from:   { name:'7CE Studio', email:'', phone:'', address:'' },
+    client: { name:'', company:'', email:'', phone:'' },
+    meta:   {
+      number: 'Q-' + today.getFullYear() + '-' + (1000 + Math.floor(Math.random() * 9000)),
+      issue: iso(today), valid: iso(plus14), currency: 'ZAR', discount: '', tax: ''
+    , notes:'Thank you for your business. Prices are valid for the period stated above.',
+      terms:'50% deposit to confirm; balance due on delivery.' },
+    items: [
+      { id: uid(), desc:'Example — Website design (edit or delete me)', qty:'1', unit:'ea', price:'1250' },
+      { id: uid(), desc:'', qty:'1', unit:'ea', price:'' }
+    ]
+  };
+}
+function load(){
+  try { const s = JSON.parse(localStorage.getItem(STORE_KEY)); if (s && s.items) return s; } catch(e){}
+  return defaultState();
+}
+let state = load();
+
+const getK = k => k.split('.').reduce((o,p) => o?.[p], state) ?? '';
+const setK = (k,v) => { const p = k.split('.'); p.reduce((o,x,i) => i === p.length-1 ? (o[x]=v) : o[p[i]], state); };
+
+const money = () => { try { return new Intl.NumberFormat(undefined, { style:'currency', currency: state.meta.currency }); } catch(e){ return { format: n => n.toFixed(2) }; } };
+const fmtQty = q => { const n = num(q); return Number.isInteger(n) ? String(n) : n.toLocaleString(undefined,{maximumFractionDigits:3}); };
+function fmtDate(v){ if(!v) return '—'; const [y,m,d] = v.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
+
+function computes(){
+  const sub = state.items.reduce((s,it) => s + num(it.qty) * num(it.price), 0);
+  const dP = num(state.meta.discount), tP = num(state.meta.tax);
+  const dA = sub * dP / 100, taxable = sub - dA, tA = taxable * tP / 100;
+  return { sub, dP, dA, tP, tA, total: taxable + tA };
+}
+
+/* ═══════════ number tween ═══════════ */
+function tween(el, to, f){
+  if(!el) return;
+  const from = (el._cur ?? to); el._cur = to;
+  if (Math.abs(to - from) < 0.005){ el.textContent = f.format(to); return; }
+  const t0 = performance.now(), dur = 380;
+  (function step(now){
+    const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+    el.textContent = f.format(from + (to - from) * e);
+    if (p < 1) requestAnimationFrame(step);
+  })(t0);
+}
+
+/* ═══════════ form binding ═══════════ */
+function fillForm(){ document.querySelectorAll('[data-k]').forEach(el => el.value = getK(el.dataset.k)); }
+document.querySelectorAll('[data-k]').forEach(el => {
+  el.addEventListener('input', () => {
+    setK(el.dataset.k, el.value);
+    if (el.dataset.k === 'meta.currency'){ renderItems(); }
+    scheduleSave(); renderPreview();
+  });
+});
+
+/* ═══════════ line items ═══════════ */
+const itemsBox = document.getElementById('itemsBox');
+function rowEl(it){
+  const d = document.createElement('div');
+  d.className = 'item-row'; d.dataset.id = it.id;
+  d.innerHTML = `
+    <input class="i-desc"  data-f="desc"  placeholder="Product / service — e.g. Logo design" value="${esc(it.desc)}">
+    <input class="i-qty"   data-f="qty"   type="number" min="0" step="any" value="${esc(it.qty)}" aria-label="Quantity">
+    <input class="i-unit"  data-f="unit"  placeholder="unit" value="${esc(it.unit)}">
+    <input class="i-price" data-f="price" type="number" min="0" step="any" placeholder="0.00" value="${esc(it.price)}" aria-label="Unit price">
+    <div class="i-amount">${money().format(num(it.qty) * num(it.price))}</div>
+    <button type="button" class="i-del" title="Remove item">✕</button>`;
+  return d;
+}
+function renderItems(){ itemsBox.innerHTML = ''; state.items.forEach(it => itemsBox.appendChild(rowEl(it))); }
+function updateRowAmount(row){
+  const it = state.items.find(x => x.id === row.dataset.id); if(!it) return;
+  row.querySelector('.i-amount').textContent = money().format(num(it.qty) * num(it.price));
+}
+
+itemsBox.addEventListener('input', e => {
+  const row = e.target.closest('.item-row'); if(!row) return;
+  const it = state.items.find(x => x.id === row.dataset.id); if(!it) return;
+  it[e.target.dataset.f] = e.target.value;
+  updateRowAmount(row); scheduleSave(); renderPreview();
+});
+itemsBox.addEventListener('click', e => {
+  const del = e.target.closest('.i-del'); if(!del) return;
+  const row = del.closest('.item-row');
+  state.items = state.items.filter(x => x.id !== row.dataset.id);
+  row.classList.add('removing');
+  setTimeout(() => { row.remove(); renderPreview(); }, 200);
+  scheduleSave();
+});
+document.getElementById('addItem').addEventListener('click', () => {
+  const it = { id: uid(), desc:'', qty:'1', unit:'ea', price:'' };
+  state.items.push(it);
+  const el = rowEl(it); itemsBox.appendChild(el);
+  el.querySelector('.i-desc').focus();
+  scheduleSave(); renderPreview();
+});
+
+/* ═══════════ preview ═══════════ */
+const paper = document.getElementById('paper');
+function renderPreview(){
+  const t = computes(), f = money();
+  const { from, client, meta } = state;
+  const fromLines = [from.email, from.phone, from.address].filter(Boolean);
+  const toLines   = [client.company, client.email, client.phone].filter(Boolean);
+  const itemsHTML = state.items.length
+    ? state.items.map((it,i) => `
+      <tr class="${!it.desc ? 'ghost':''}">
+        <td class="n">${i+1}</td>
+        <td>${esc(it.desc) || 'Untitled item'}</td>
+        <td class="q">${fmtQty(it.qty)}${it.unit ? `<span class="u">${esc(it.unit)}</span>`:''}</td>
+        <td class="p">${f.format(num(it.price))}</td>
+        <td class="a">${f.format(num(it.qty) * num(it.price))}</td>
+      </tr>`).join('')
+    : `<tr class="ghost"><td colspan="5" class="empty">No line items yet — add your first one.</td></tr>`;
+
+  paper.innerHTML = `
+    <div class="stamp">QUOTE</div>
+    <div class="p-band">
+      <div><div class="p-title">QUOTE</div><div class="p-num">№ ${esc(meta.number)}</div></div>
+      <div class="p-co"><b>${esc(from.name) || 'Your Company'}</b>
+        ${fromLines.slice(0,3).map(l => `<span>${esc(l)}</span>`).join('')}</div>
+    </div>
+    <div class="p-meta">Issued ${fmtDate(meta.issue)} &nbsp;·&nbsp; Valid until ${fmtDate(meta.valid)} &nbsp;·&nbsp; ${esc(meta.currency)}</div>
+    <div class="p-parties">
+      <div><div class="lbl">From</div><b>${esc(from.name) || '—'}</b>
+        ${fromLines.map(l => `<span>${esc(l)}</span>`).join('')}</div>
+      <div><div class="lbl">Bill to</div><b>${esc(client.name) || '—'}</b>
+        ${toLines.map(l => `<span>${esc(l)}</span>`).join('')}</div>
+    </div>
+    <div class="p-tablewrap"><table class="p-table">
+      <thead><tr><th>#</th><th>Description</th><th>Qty</th><th>Unit price</th><th>Amount</th></tr></thead>
+      <tbody>${itemsHTML}</tbody>
+    </table></div>
+    <div class="p-totals"><div class="tt">
+      <div class="trow"><span>Subtotal</span><b>${f.format(t.sub)}</b></div>
+      ${t.dA > 0 ? `<div class="trow"><span>Discount (${t.dP}%)</span><b>−${f.format(t.dA)}</b></div>`:''}
+      ${t.tA > 0 ? `<div class="trow"><span>Tax (${t.tP}%)</span><b>${f.format(t.tA)}</b></div>`:''}
+      <div class="trow grand"><span>Total</span><b id="pvGrand">${f.format(t.total)}</b></div>
+    </div></div>
+    ${meta.notes ? `<div class="p-notes"><div class="lbl">Notes</div><p>${esc(meta.notes)}</p></div>`:''}
+    ${meta.terms ? `<div class="p-notes"><div class="lbl">Terms</div><p>${esc(meta.terms)}</p></div>`:''}
+    <div class="p-foot"><span>Thank you for your business — ${esc(from.name) || '7CE'}</span><span>№ ${esc(meta.number)}</span></div>`;
+
+  tween(paper.querySelector('#pvGrand'), t.total, f);
+  tween(document.getElementById('tGrand'), t.total, f);
+  document.getElementById('tSub').textContent  = f.format(t.sub);
+  document.getElementById('tDisc').textContent = '−' + f.format(t.dA);
+  document.getElementById('tTax').textContent  = f.format(t.tA);
+  document.getElementById('tDLabel').textContent = t.dP ? `(${t.dP}%)` : '';
+  document.getElementById('tTLabel').textContent = t.tP ? `(${t.tP}%)` : '';
+}
+
+/* ═══════════ autosave ═══════════ */
+let saveT;
+function scheduleSave(){
+  clearTimeout(saveT);
+  saveT = setTimeout(() => {
+    localStorage.setItem(STORE_KEY, JSON.stringify(state));
+    const chip = document.getElementById('saveChip');
+    chip.classList.add('flash');
+    setTimeout(() => chip.classList.remove('flash'), 900);
+  }, 400);
+}
+
+/* ═══════════ toast ═══════════ */
+let toastT;
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2600);
+}
+
+/* ═══════════ PDF ═══════════ */
+function downloadPDF(){
+  if (!window.jspdf){ toast('⚠ PDF library failed to load — check your connection'); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'mm', format:'a4' });
+  const W = 210, M = 16, R = 194;
+  const GREEN=[18,63,51], AMBER=[255,181,46], INK=[32,38,31], MUT=[105,116,108], FAINT=[152,160,141];
+  const f = money(), t = computes(), { from, client, meta } = state;
+  doc.setLineHeightFactor(1.3);
+
+  /* header band */
+  doc.setFillColor(...GREEN); doc.rect(0, 0, W, 30, 'F');
+  doc.setFillColor(...AMBER); doc.rect(0, 30, W, 1.5, 'F');
+  doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(23);
+  doc.text('QUOTE', M, 18.5);
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+  doc.text('No. ' + (meta.number || '—'), M, 25);
+  doc.setFont('helvetica','bold'); doc.setFontSize(11.5);
+  doc.text(from.name || 'Your Company', R, 12.5, { align:'right' });
+  doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(207,226,212);
+  let cy = 17.5;
+  [from.email, from.phone, from.address].filter(Boolean).slice(0,3).forEach(l => {
+    doc.text(String(l), R, cy, { align:'right' }); cy += 4.2;
+  });
+
+  /* meta + parties */
+  doc.setTextColor(...MUT); doc.setFontSize(8.5);
+  doc.text(`Issued ${fmtDate(meta.issue)}   ·   Valid until ${fmtDate(meta.valid)}   ·   ${meta.currency}`, M, 41);
+  const y0 = 50, LH = 3.9;
+  function party(x, label, name, lines){
+    doc.setTextColor(...FAINT); doc.setFont('helvetica','bold'); doc.setFontSize(7);
+    doc.text(label.toUpperCase(), x, y0);
+    doc.setTextColor(...INK); doc.setFontSize(10.5);
+    doc.text(name || '—', x, y0 + 6);
+    doc.setFont('helvetica','normal'); doc.setFontSize(8.3); doc.setTextColor(...MUT);
+    let ly = y0 + 11, n = 0;
+    lines.forEach(l => { if(n >= 4) return; doc.text(String(l), x, ly); ly += LH; n++; });
+    return n;
+  }
+  const addrSplit = from.address ? doc.splitTextToSize(from.address, 82).slice(0,2) : [];
+  const nL = party(M,   'From',    from.name,   [from.email, from.phone, ...addrSplit].filter(Boolean));
+  const nR = party(112, 'Bill to', client.name, [client.company, client.email, client.phone].filter(Boolean));
+  let y = Math.max(78, y0 + 11 + Math.max(nL, nR) * LH + 6);
+
+  /* table */
+  const descX = 24, descW = 86, qtyX = 128, prX = 160, amX = 194;
+  function tableHeader(yy){
+    doc.setFillColor(...GREEN); doc.rect(M, yy, R - M, 8, 'F');
+    doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(7.5);
+    doc.text('#', M + 1.5, yy + 5.4);
+    doc.text('DESCRIPTION', descX, yy + 5.4);
+    doc.text('QTY', qtyX, yy + 5.4, { align:'right' });
+    doc.text('UNIT PRICE', prX, yy + 5.4, { align:'right' });
+    doc.text('AMOUNT', amX, yy + 5.4, { align:'right' });
+    return yy + 8;
+  }
+  y = tableHeader(y);
+  state.items.forEach((it, i) => {
+    const lines = doc.splitTextToSize(it.desc || 'Untitled item', descW);
+    const rowH = Math.max(8, lines.length * LH + 3.4);
+    if (y + rowH > 272){ doc.addPage(); y = tableHeader(16); }
+    if (i % 2 === 1){ doc.setFillColor(245,243,234); doc.rect(M, y, R - M, rowH, 'F'); }
+    doc.setTextColor(...INK); doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+    doc.text(String(i + 1), M + 1.5, y + 5.4);
+    doc.text(lines, descX, y + 5.4);
+    doc.text(fmtQty(it.qty) + (it.unit ? ' ' + it.unit : ''), qtyX, y + 5.4, { align:'right' });
+    doc.text(f.format(num(it.price)), prX, y + 5.4, { align:'right' });
+    doc.setFont('helvetica','bold');
+    doc.text(f.format(num(it.qty) * num(it.price)), amX, y + 5.4, { align:'right' });
+    doc.setDrawColor(224,220,208); doc.line(M, y + rowH, R, y + rowH);
+    y += rowH;
+  });
+
+  /* totals */
+  y += 5;
+  function trow(label, val, bold){
+    doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(8.5);
+    doc.setTextColor(...(bold ? INK : MUT));
+    doc.text(label, 164, y, { align:'right' });
+    doc.text(val, R, y, { align:'right' });
+    y += 5.4;
+  }
+  trow('Subtotal', f.format(t.sub));
+  if (t.dA > 0) trow(`Discount (${t.dP}%)`, '-' + f.format(t.dA));
+  if (t.tA > 0) trow(`Tax (${t.tP}%)`, f.format(t.tA));
+  y += 1.5;
+  doc.setFillColor(...AMBER); doc.rect(118, y - 1, R - 118, 10, 'F');
+  doc.setTextColor(...INK); doc.setFont('helvetica','bold');
+  doc.setFontSize(8.5); doc.text('TOTAL', 122, y + 5.4);
+  doc.setFontSize(11.5); doc.text(f.format(t.total), R - 3, y + 5.6, { align:'right' });
+  y += 18;
+
+  /* notes & terms */
+  function block(label, text){
+    if (!text) return;
+    const paras = doc.splitTextToSize(text, R - M);
+    if (y + paras.length * 4.2 + 10 > 276){ doc.addPage(); y = 20; }
+    doc.setTextColor(...FAINT); doc.setFont('helvetica','bold'); doc.setFontSize(7);
+    doc.text(label.toUpperCase(), M, y); y += 5;
+    doc.setTextColor(...MUT); doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
+    doc.text(paras, M, y); y += paras.length * 4.2 + 5;
+  }
+  block('Notes', meta.notes);
+  block('Terms', meta.terms);
+
+  /* footer on every page */
+  const pages = doc.getNumberOfPages();
+  for (let p = 1; p <= pages; p++){
+    doc.setPage(p);
+    doc.setDrawColor(224,220,208); doc.line(M, 284, R, 284);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(...FAINT);
+    doc.text(`Thank you for your business — ${from.name || '7CE'}`, M, 289);
+    doc.text(`Page ${p} of ${pages}`, R, 289, { align:'right' });
+  }
+
+  const fname = ((meta.number || 'quote') + '-' + (client.name || client.company || 'client'))
+    .replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') + '.pdf';
+  doc.save(fname);
+  toast('✓ Quote PDF downloaded — ' + fname);
+}
+
+/* ═══════════ wire up ═══════════ */
+document.getElementById('pdfBtn').addEventListener('click', downloadPDF);
+document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') downloadPDF(); });
+document.getElementById('resetBtn').addEventListener('click', () => {
+  if (!confirm('Clear everything and start a new quote?')) return;
+  localStorage.removeItem(STORE_KEY);
+  state = defaultState();
+  fillForm(); renderItems(); renderPreview();
+  toast('Fresh quote started');
+});
+
+fillForm(); renderItems(); renderPreview();
+</script>
+</body>
+</html>
