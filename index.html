@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Biko Lashu · Quote Builder</title>
+<title>Biko Lashu · Quote & Invoice Builder</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧾</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -63,6 +63,20 @@
   .brand h1{font:700 17px/1.1 var(--disp); letter-spacing:.01em}
   .brand small{display:block; font:500 10px var(--mono); letter-spacing:.22em; text-transform:uppercase; color:var(--dim); margin-top:2px}
   .actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  
+  .type-toggle {
+    display: flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; overflow: hidden;
+  }
+  .toggle-btn {
+    background: transparent; border: none; color: var(--muted); font: 600 12px var(--body); padding: 8px 14px; cursor: pointer; transition: .2s; letter-spacing: .05em;
+  }
+  .toggle-btn.active {
+    background: var(--amber); color: var(--ink);
+  }
+  .toggle-btn:hover:not(.active) {
+    color: var(--text); background: rgba(255,255,255,0.05);
+  }
+
   .save-chip{
     font:500 10.5px var(--mono); letter-spacing:.1em; color:var(--muted);
     border:1px solid var(--line); padding:6px 11px; border-radius:99px;
@@ -317,9 +331,13 @@
 <header class="topbar">
   <div class="brand">
     <div class="logo" id="brandLogo">B</div>
-    <div><h1>Quote Builder</h1><small>Biko Lashu · PDF Quotes</small></div>
+    <div><h1 id="topbarTitle">Quote Builder</h1><small>Biko Lashu · PDF Quotes & Invoices</small></div>
   </div>
   <div class="actions">
+    <div class="type-toggle">
+      <button type="button" class="toggle-btn active" id="btnQuote">Quote</button>
+      <button type="button" class="toggle-btn" id="btnInvoice">Invoice</button>
+    </div>
     <span class="save-chip" id="saveChip">● auto-saved</span>
     <button class="btn btn-ghost" id="resetBtn">↺ Reset</button>
     <button class="btn btn-primary" id="pdfBtn">
@@ -345,7 +363,7 @@
           </div>
           <div class="logo-info">
             <b>Company logo</b>
-            <span>Click the box to upload — appears on quote &amp; PDF</span>
+            <span>Click the box to upload — appears on document &amp; PDF</span>
             <small>PNG or JPG · recommended 400×400px</small>
           </div>
           <div class="logo-btns">
@@ -376,11 +394,11 @@
     <div class="spacer"></div>
 
     <section class="card" style="--d:.14s">
-      <header><span class="idx">03</span><h2>Quote details</h2></header>
+      <header><span class="idx">03</span><h2>Document details</h2></header>
       <div class="grid4">
-        <label>Quote №<input data-k="meta.number" placeholder="Q-2026-0001"></label>
+        <label id="numberLabel">Quote №<input data-k="meta.number" placeholder="Q-2026-0001"></label>
         <label>Issue date<input data-k="meta.issue" type="date"></label>
-        <label>Valid until<input data-k="meta.valid" type="date"></label>
+        <label><span id="validDateLabelText">Valid until</span><input data-k="meta.valid" type="date"></label>
         <label>Currency
           <select data-k="meta.currency">
             <option value="ZAR">ZAR — R</option><option value="USD">USD — $</option>
@@ -402,7 +420,7 @@
       <div class="totals">
         <div class="trow"><span>Subtotal</span><b id="tSub">–</b></div>
         <div class="trow"><span>Discount <i id="tDLabel"></i></span><b id="tDisc">–</b></div>
-        <div class="trow"><span>Tax <i id="tTLabel"></i></span><b id="tTax">–</b></div>
+        <div class="trow"><span>Tax / VAT <i id="tTLabel"></i></span><b id="tTax">–</b></div>
         <div class="trow grand"><span>Total</span><b id="tGrand">–</b></div>
       </div>
     </section>
@@ -428,7 +446,7 @@
 
 <script>
 /* ═══════════ state ═══════════ */
-const STORE_KEY = 'qf_biko_v1';
+const STORE_KEY = 'qf_biko_v2';
 const uid = () => 'i' + Math.random().toString(36).slice(2, 9);
 const iso = d => d.toISOString().slice(0, 10);
 const num = v => { const n = parseFloat(v); return isFinite(n) ? n : 0; };
@@ -437,6 +455,7 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 function defaultState(){
   const today = new Date(), plus14 = new Date(Date.now() + 14 * 864e5);
   return {
+    docType: 'quote',
     from:   { name:'Biko Lashu', email:'nahovhutali@gmail.com', phone:'0760326010', address:'' },
     client: { name:'', company:'', email:'', phone:'' },
     meta:   {
@@ -456,7 +475,7 @@ function load(){
   try { 
     const s = JSON.parse(localStorage.getItem(STORE_KEY)); 
     if (s && s.items) {
-      // Migrate missing email for existing saves
+      if (!s.docType) s.docType = 'quote';
       if (!s.from.email) s.from.email = 'nahovhutali@gmail.com';
       return s; 
     } 
@@ -502,6 +521,44 @@ document.querySelectorAll('[data-k]').forEach(el => {
   });
 });
 
+/* ═══════════ Document Type Toggle ═══════════ */
+const btnQuote = document.getElementById('btnQuote');
+const btnInvoice = document.getElementById('btnInvoice');
+const validDateLabelText = document.getElementById('validDateLabelText');
+const numberLabel = document.getElementById('numberLabel');
+const topbarTitle = document.getElementById('topbarTitle');
+
+function setDocType(type) {
+  state.docType = type;
+  
+  if (type === 'quote') {
+    btnQuote.classList.add('active');
+    btnInvoice.classList.remove('active');
+    validDateLabelText.textContent = 'Valid until';
+    numberLabel.childNodes[0].textContent = 'Quote № ';
+    topbarTitle.textContent = 'Quote Builder';
+    if (state.meta.number.startsWith('INV-')) {
+      state.meta.number = state.meta.number.replace('INV-', 'Q-');
+      document.querySelector('[data-k="meta.number"]').value = state.meta.number;
+    }
+  } else {
+    btnInvoice.classList.add('active');
+    btnQuote.classList.remove('active');
+    validDateLabelText.textContent = 'Due date';
+    numberLabel.childNodes[0].textContent = 'Invoice № ';
+    topbarTitle.textContent = 'Invoice Builder';
+    if (state.meta.number.startsWith('Q-')) {
+      state.meta.number = state.meta.number.replace('Q-', 'INV-');
+      document.querySelector('[data-k="meta.number"]').value = state.meta.number;
+    }
+  }
+  scheduleSave();
+  renderPreview();
+}
+
+btnQuote.addEventListener('click', () => setDocType('quote'));
+btnInvoice.addEventListener('click', () => setDocType('invoice'));
+
 /* ═══════════ logo upload ═══════════ */
 const logoInput = document.getElementById('logoInput');
 const logoBox   = document.getElementById('logoBox');
@@ -524,7 +581,6 @@ function renderLogo(){
     logoBox.classList.add('has-img');
     logoRemoveBtn.style.display = 'inline-block';
     logoUpload.classList.add('has-logo');
-    // update topbar brand
     brandLogo.style.background = '#fff';
     brandLogo.innerHTML = '';
     const bi = document.createElement('img');
@@ -555,7 +611,7 @@ logoInput.addEventListener('change', e => {
     toast('✓ Logo uploaded');
   };
   reader.readAsDataURL(file);
-  logoInput.value = ''; // allow re-uploading same file
+  logoInput.value = '';
 });
 
 logoRemoveBtn.addEventListener('click', () => {
@@ -609,7 +665,11 @@ document.getElementById('addItem').addEventListener('click', () => {
 const paper = document.getElementById('paper');
 function renderPreview(){
   const t = computes(), f = money();
-  const { from, client, meta } = state;
+  const { from, client, meta, docType } = state;
+  const isInvoice = docType === 'invoice';
+  const docTitle = isInvoice ? 'INVOICE' : 'QUOTE';
+  const dateLabel = isInvoice ? 'Due' : 'Valid until';
+  
   const fromLines = [from.email, from.phone, from.address].filter(Boolean);
   const toLines   = [client.company, client.email, client.phone].filter(Boolean);
   const itemsHTML = state.items.length
@@ -628,17 +688,17 @@ function renderPreview(){
     : `<div class="p-logo empty">NO LOGO<br>UPLOADED</div>`;
 
   paper.innerHTML = `
-    <div class="stamp">QUOTE</div>
+    <div class="stamp">${docTitle}</div>
     <div class="p-band">
       ${logoHTML}
       <div class="p-band-main">
-        <div class="p-title">QUOTE</div>
+        <div class="p-title">${docTitle}</div>
         <div class="p-num">№ ${esc(meta.number)}</div>
       </div>
       <div class="p-co"><b>${esc(from.name) || 'Biko Lashu'}</b>
         ${fromLines.slice(0,3).map(l => `<span>${esc(l)}</span>`).join('')}</div>
     </div>
-    <div class="p-meta">Issued ${fmtDate(meta.issue)} &nbsp;·&nbsp; Valid until ${fmtDate(meta.valid)} &nbsp;·&nbsp; ${esc(meta.currency)}</div>
+    <div class="p-meta">Issued ${fmtDate(meta.issue)} &nbsp;·&nbsp; ${dateLabel} ${fmtDate(meta.valid)} &nbsp;·&nbsp; ${esc(meta.currency)}</div>
     <div class="p-parties">
       <div><div class="lbl">From</div><b>${esc(from.name) || '—'}</b>
         ${fromLines.map(l => `<span>${esc(l)}</span>`).join('')}</div>
@@ -695,14 +755,16 @@ function downloadPDF(){
   const doc = new jsPDF({ unit:'mm', format:'a4' });
   const W = 210, M = 16, R = 194;
   const GREEN=[18,63,51], AMBER=[255,181,46], INK=[32,38,31], MUT=[105,116,108], FAINT=[152,160,141];
-  const f = money(), t = computes(), { from, client, meta } = state;
+  const f = money(), t = computes(), { from, client, meta, docType } = state;
+  const isInvoice = docType === 'invoice';
+  const docTitle = isInvoice ? 'INVOICE' : 'QUOTE';
+  const dateLabel = isInvoice ? 'Due' : 'Valid until';
   doc.setLineHeightFactor(1.3);
 
   const headerH = 30;
   doc.setFillColor(...GREEN); doc.rect(0, 0, W, headerH, 'F');
   doc.setFillColor(...AMBER); doc.rect(0, headerH, W, 1.5, 'F');
 
-  // Logo in PDF header
   let textX = M;
   if (state.logo){
     try {
@@ -715,13 +777,11 @@ function downloadPDF(){
     } catch(e){ console.warn('Logo embedding failed', e); }
   }
 
-  // QUOTE title
   doc.setTextColor(255,255,255); doc.setFont('helvetica','bold'); doc.setFontSize(23);
-  doc.text('QUOTE', textX, 18.5);
+  doc.text(docTitle, textX, 18.5);
   doc.setFont('helvetica','normal'); doc.setFontSize(8.5);
   doc.text('No. ' + (meta.number || '—'), textX, 25);
 
-  // Company details on right
   doc.setFont('helvetica','bold'); doc.setFontSize(11.5);
   doc.text(from.name || 'Biko Lashu', R, 12.5, { align:'right' });
   doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.setTextColor(207,226,212);
@@ -730,9 +790,8 @@ function downloadPDF(){
     doc.text(String(l), R, cy, { align:'right' }); cy += 4.2;
   });
 
-  /* meta + parties */
   doc.setTextColor(...MUT); doc.setFontSize(8.5);
-  doc.text(`Issued ${fmtDate(meta.issue)}   ·   Valid until ${fmtDate(meta.valid)}   ·   ${meta.currency}`, M, 41);
+  doc.text(`Issued ${fmtDate(meta.issue)}   ·   ${dateLabel} ${fmtDate(meta.valid)}   ·   ${meta.currency}`, M, 41);
   const y0 = 50, LH = 3.9;
   function party(x, label, name, lines){
     doc.setTextColor(...FAINT); doc.setFont('helvetica','bold'); doc.setFontSize(7);
@@ -749,7 +808,6 @@ function downloadPDF(){
   const nR = party(112, 'Bill to', client.name, [client.company, client.email, client.phone].filter(Boolean));
   let y = Math.max(78, y0 + 11 + Math.max(nL, nR) * LH + 6);
 
-  /* table */
   const descX = 24, descW = 86, qtyX = 128, prX = 160, amX = 194;
   function tableHeader(yy){
     doc.setFillColor(...GREEN); doc.rect(M, yy, R - M, 8, 'F');
@@ -778,7 +836,6 @@ function downloadPDF(){
     y += rowH;
   });
 
-  /* totals */
   y += 5;
   function trow(label, val, bold){
     doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(8.5);
@@ -797,7 +854,6 @@ function downloadPDF(){
   doc.setFontSize(11.5); doc.text(f.format(t.total), R - 3, y + 5.6, { align:'right' });
   y += 18;
 
-  /* notes & terms */
   function block(label, text){
     if (!text) return;
     const paras = doc.splitTextToSize(text, R - M);
@@ -810,7 +866,6 @@ function downloadPDF(){
   block('Notes', meta.notes);
   block('Terms', meta.terms);
 
-  /* footer */
   const pages = doc.getNumberOfPages();
   for (let p = 1; p <= pages; p++){
     doc.setPage(p);
@@ -820,23 +875,26 @@ function downloadPDF(){
     doc.text(`Page ${p} of ${pages}`, R, 289, { align:'right' });
   }
 
-  const fname = ((meta.number || 'quote') + '-' + (client.name || client.company || 'client'))
+  const fname = ((meta.number || (isInvoice ? 'invoice' : 'quote')) + '-' + (client.name || client.company || 'client'))
     .replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') + '.pdf';
   doc.save(fname);
-  toast('✓ Quote PDF downloaded — ' + fname);
+  toast('✓ ' + docTitle + ' PDF downloaded — ' + fname);
 }
 
 /* ═══════════ wire up ═══════════ */
 document.getElementById('pdfBtn').addEventListener('click', downloadPDF);
 document.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') downloadPDF(); });
 document.getElementById('resetBtn').addEventListener('click', () => {
-  if (!confirm('Clear everything and start a new quote?')) return;
+  if (!confirm('Clear everything and start a new document?')) return;
   localStorage.removeItem(STORE_KEY);
   state = defaultState();
+  setDocType('quote');
   fillForm(); renderItems(); renderLogo(); renderPreview();
-  toast('Fresh quote started');
+  toast('Fresh document started');
 });
 
+// Initialize UI based on loaded state
+setDocType(state.docType);
 fillForm(); renderItems(); renderLogo(); renderPreview();
 </script>
 </body>
